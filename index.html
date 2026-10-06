@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Circuit RLC série et résonance</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;600&display=swap">
+<style>
+:root{--bg:#f5f7fa;--panel:#fff;--ink:#16202e;--mut:#5d6b7e;--grid:#dde3ec;--line:#c9d2df;--v:#2f55d4;--i:#d6336c;--r:#128a7d;--l:#c77700;--c:#7a4fd6;
+box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#10151d;--panel:#18202c;--ink:#e8edf5;--mut:#93a1b5;--grid:#2a3444;--line:#3a4658;--v:#7d98ff;--i:#ff7fa9;--r:#45d1bf;--l:#ffb23f;--c:#b494ff}}
+:root[data-theme="dark"]{--bg:#10151d;--panel:#18202c;--ink:#e8edf5;--mut:#93a1b5;--grid:#2a3444;--line:#3a4658;--v:#7d98ff;--i:#ff7fa9;--r:#45d1bf;--l:#ffb23f;--c:#b494ff}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.45 "IBM Plex Sans",system-ui,sans-serif}
+main{max-width:1100px;margin:0 auto;padding:16px}
+h1{font-size:1.3rem;margin:4px 0 12px}
+.ctrl{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:10px 18px;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px;margin-bottom:12px;align-items:end}
+.ctrl label{display:flex;justify-content:space-between;font-size:.9rem;color:var(--mut)}
+.ctrl b{color:var(--ink);font-weight:600}
+.ctrl input[type=range]{width:100%}
+button{border:1px solid var(--line);background:var(--panel);color:var(--ink);padding:7px 12px;border-radius:8px;font:inherit;cursor:pointer}
+button.pri{background:var(--v);border-color:var(--v);color:#fff}
+button:focus-visible,input:focus-visible{outline:2px solid var(--i);outline-offset:2px}
+.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.read{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px;margin:12px 0 6px}
+.read div{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:8px 12px;font-size:.82rem;color:var(--mut)}
+.read strong{display:block;font-size:1.1rem;color:var(--ink)}
+#state{margin:0 0 12px;font-weight:600}
+.grid{display:grid;grid-template-columns:minmax(0,5fr) minmax(0,7fr);gap:12px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:8px}
+.card h2{font-size:.95rem;margin:2px 6px 4px;color:var(--mut);font-weight:600}
+canvas{display:block;width:100%}
+#cp,#cw{height:360px}#cz{height:280px}
+.full{grid-column:1/-1}
+.leg{display:flex;gap:14px;flex-wrap:wrap;font-size:.85rem;margin:0 6px 4px}
+.leg i{display:inline-block;width:12px;height:3px;margin-right:5px;vertical-align:middle}
+@media(max-width:760px){.grid{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<main>
+<h1>Circuit RLC série : résonance et vecteurs de Fresnel</h1>
+
+<div class="ctrl">
+  <div><label>Fréquence f <b id="o_f"></b></label><input id="s_f" type="range" min="0" max="1000" value="300"></div>
+  <div><label>Tension max Vm <b id="o_V"></b></label><input id="s_V" type="range" min="1" max="10" step="0.5" value="5"></div>
+  <div><label>Résistance R <b id="o_R"></b></label><input id="s_R" type="range" min="0" max="1000" value="300"></div>
+  <div><label>Inductance L <b id="o_L"></b></label><input id="s_L" type="range" min="0" max="1000" value="667"></div>
+  <div><label>Capacité C <b id="o_C"></b></label><input id="s_C" type="range" min="0" max="1000" value="667"></div>
+  <div class="row"><button class="pri" id="go0">f = f₀</button><button id="play">Pause</button></div>
+  <div><label>Vitesse de rotation</label><input id="s_sp" type="range" min="0.05" max="1" step="0.05" value="0.2"></div>
+  <div><label><span><input id="chk" type="checkbox" checked> Afficher vL et vC</span></label></div>
+</div>
+
+<div class="read">
+  <div>Fréquence propre f₀<strong id="r_f0"></strong></div>
+  <div>Facteur de qualité Q<strong id="r_Q"></strong></div>
+  <div>Bande passante Δf<strong id="r_bw"></strong></div>
+  <div>Impédance |Z|<strong id="r_Z"></strong></div>
+  <div>Courant max Im<strong id="r_I"></strong></div>
+  <div>Déphasage φ (v avance i)<strong id="r_P"></strong></div>
+  <div>Tension max aux bornes de L<strong id="r_VL"></strong></div>
+  <div>Tension max aux bornes de C<strong id="r_VC"></strong></div>
+</div>
+<p id="state"></p>
+
+<div class="grid">
+  <div class="card"><h2>Diagramme de Fresnel (courant en référence)</h2>
+    <div class="leg"><span><i style="background:var(--v)"></i>V</span><span><i style="background:var(--r)"></i>VR</span><span><i style="background:var(--l)"></i>VL</span><span><i style="background:var(--c)"></i>VC</span><span><i style="background:var(--i)"></i>I</span></div>
+    <canvas id="cp"></canvas></div>
+  <div class="card"><h2>Signaux sur trois périodes</h2>
+    <div class="leg"><span><i style="background:var(--v)"></i>v(t)</span><span><i style="background:var(--i)"></i>i(t) (échelle de droite)</span><span><i style="background:var(--l)"></i>vL</span><span><i style="background:var(--c)"></i>vC</span></div>
+    <canvas id="cw"></canvas></div>
+  <div class="card full"><h2>Réponse en fréquence : courant I/Imax (trait plein) et déphasage φ (pointillés)</h2><canvas id="cz"></canvas></div>
+</div>
+</main>
+
+<script>
+const $ = id => document.getElementById(id);
+const S = {f:100, V:5, R:20, L:0.1, C:1e-5, th:0, play:true, speed:0.2};
+const RANGE = {f:[10,1e5], R:[1,1000], L:[1e-3,1], C:[1e-7,1e-4]};
+const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const FONT = '12px "IBM Plex Sans",sans-serif';
+
+function fmt(x, u){
+  const a = Math.abs(x), p = [[1e6,'M'],[1e3,'k'],[1,''],[1e-3,'m'],[1e-6,'µ'],[1e-9,'n']];
+  for(const [k,s] of p) if(a >= k*0.9999) return (x/k).toPrecision(3).replace(/\.?0+$/,'') + ' ' + s + u;
+  return x.toPrecision(3) + ' ' + u;
+}
+const nice = x => { const p = Math.pow(10, Math.floor(Math.log10(x))), m = x/p; return (m<=1?1:m<=2?2:m<=5?5:10)*p; };
+const logVal = (k, x) => { const [a,b] = RANGE[k]; return a*Math.pow(b/a, x/1000); };
+const logPos = (k, v) => { const [a,b] = RANGE[k]; return Math.round(1000*Math.log(v/a)/Math.log(b/a)); };
+
+/* ---------- Grandeurs du circuit série ---------- */
+let K = {};
+function zOf(f){ const w = 2*Math.PI*f, X = w*S.L - 1/(w*S.C); return {X, Z:Math.hypot(S.R, X), phi:Math.atan2(X, S.R)}; }
+function calc(){
+  const w = 2*Math.PI*S.f, XL = w*S.L, XC = 1/(w*S.C), z = zOf(S.f);
+  K = {w, XL, XC, X:z.X, Z:z.Z, phi:z.phi, I:S.V/z.Z, T:1/S.f};
+  K.VR = S.R*K.I; K.VL = XL*K.I; K.VC = XC*K.I;
+  K.f0 = 1/(2*Math.PI*Math.sqrt(S.L*S.C));
+  K.Q = Math.sqrt(S.L/S.C)/S.R;
+  K.bw = K.f0/K.Q;
+  K.vAx = 1.15*Math.max(K.VR, Math.hypot(K.VR,K.VL), Math.hypot(K.VR,K.VC), S.V, K.VL, K.VC);
+  K.iAx = nice(K.I*1.2);
+  $('o_f').textContent = fmt(S.f,'Hz'); $('o_V').textContent = S.V+' V';
+  $('o_R').textContent = fmt(S.R,'Ω'); $('o_L').textContent = fmt(S.L,'H'); $('o_C').textContent = fmt(S.C,'F');
+  $('r_f0').textContent = fmt(K.f0,'Hz'); $('r_Q').textContent = K.Q.toPrecision(3);
+  $('r_bw').textContent = fmt(K.bw,'Hz'); $('r_Z').textContent = fmt(K.Z,'Ω');
+  $('r_I').textContent = fmt(K.I,'A'); $('r_P').textContent = (K.phi*180/Math.PI).toFixed(1)+'°';
+  $('r_VL').textContent = fmt(K.VL,'V'); $('r_VC').textContent = fmt(K.VC,'V');
+  const near = Math.abs(Math.log(S.f/K.f0)) < 0.02;
+  $('state').textContent = near
+    ? 'Résonance : XL = XC, |Z| = R, le courant est maximal et en phase avec v. Surtension Q × Vm aux bornes de L et de C.'
+    : S.f < K.f0 ? 'f < f₀ : circuit capacitif (XC > XL), le courant est en avance sur la tension.'
+                 : 'f > f₀ : circuit inductif (XL > XC), le courant est en retard sur la tension.';
+}
+
+/* ---------- Canvas ---------- */
+const cv = {};
+function fit(id){
+  const c = $(id), r = c.getBoundingClientRect(), d = window.devicePixelRatio || 1;
+  c.width = r.width*d; c.height = r.height*d;
+  const g = c.getContext('2d'); g.setTransform(d,0,0,d,0,0);
+  cv[id] = {g, w:r.width, h:r.height};
+}
+const fitAll = () => ['cp','cw','cz'].forEach(fit);
+addEventListener('resize', fitAll);
+
+function arrow(g, x0, y0, x1, y1, col, lw){
+  g.strokeStyle = g.fillStyle = col; g.lineWidth = lw;
+  g.beginPath(); g.moveTo(x0,y0); g.lineTo(x1,y1); g.stroke();
+  const a = Math.atan2(y1-y0, x1-x0), s = 9;
+  g.beginPath(); g.moveTo(x1,y1);
+  g.lineTo(x1 - s*Math.cos(a-0.4), y1 - s*Math.sin(a-0.4));
+  g.lineTo(x1 - s*Math.cos(a+0.4), y1 - s*Math.sin(a+0.4));
+  g.closePath(); g.fill();
+}
+
+function drawPhasors(){
+  const {g,w,h} = cv.cp, grid = css('--grid'), mut = css('--mut');
+  const cs = {V:css('--v'), R:css('--r'), L:css('--l'), C:css('--c'), I:css('--i')};
+  g.clearRect(0,0,w,h);
+  const R0 = Math.min(w,h)*0.42, cx = w/2, cy = h/2, sc = R0/K.vAx, th = S.th;
+  g.strokeStyle = grid; g.lineWidth = 1;
+  g.beginPath(); g.arc(cx,cy,R0,0,7); g.stroke();
+  g.beginPath(); g.moveTo(cx-R0-6,cy); g.lineTo(cx+R0+6,cy); g.moveTo(cx,cy-R0-6); g.lineTo(cx,cy+R0+6); g.stroke();
+  const pt = (x,y) => [cx + x*sc, cy - y*sc];               // x,y en volts, repère tournant
+  const rot = (a,b) => [a*Math.cos(th)-b*Math.sin(th), a*Math.sin(th)+b*Math.cos(th)];
+  const A = rot(K.VR, 0), B = rot(K.VR, K.VL), C = rot(K.VR, K.VL-K.VC);
+  const O = [cx,cy], pA = pt(...A), pB = pt(...B), pC = pt(...C);
+  // I en référence : vecteur de longueur fixe
+  const iv = rot(K.vAx*0.45, 0), pI = pt(...iv);
+  g.setLineDash([5,4]); arrow(g, ...O, ...pI, cs.I, 2); g.setLineDash([]);
+  // chaîne VR -> VL -> VC
+  arrow(g, ...O, ...pA, cs.R, 2.5);
+  arrow(g, ...pA, ...pB, cs.L, 2.5);
+  arrow(g, ...pB, ...pC, cs.C, 2.5);
+  arrow(g, ...O, ...pC, cs.V, 3.5);
+  g.font = '600 13px "IBM Plex Sans",sans-serif';
+  [['I',pI,cs.I],['VR',pA,cs.R],['VL',pB,cs.L],['VC',pC,cs.C]].forEach(([n,p,c])=>{ g.fillStyle=c; g.fillText(n, p[0]+6, p[1]-6); });
+  g.fillStyle = cs.V; g.fillText('V', pC[0]-18, pC[1]+16);
+  // arc φ entre I (réf) et V
+  g.strokeStyle = mut; g.lineWidth = 1.5; g.beginPath();
+  g.arc(cx,cy,R0*0.22, -(th+K.phi), -th, K.phi<0); g.stroke();
+  g.fillStyle = mut; g.font = FONT; g.fillText('φ = '+(K.phi*180/Math.PI).toFixed(0)+'°', 8, 18);
+  g.fillText('Rayon = '+fmt(K.vAx,'V'), 8, h-8);
+}
+
+function drawWaves(){
+  const {g,w,h} = cv.cw, grid = css('--grid'), mut = css('--mut');
+  const cV = css('--v'), cI = css('--i'), cL = css('--l'), cC = css('--c');
+  g.clearRect(0,0,w,h);
+  const L = 54, Rm = 54, T = 14, B = 28, pw = w-L-Rm, ph = h-T-B, y0 = T+ph/2, X = 6*Math.PI;
+  const px = x => L + x/X*pw;
+  g.font = FONT; g.lineWidth = 1;
+  for(let k=0;k<=3;k++){
+    g.strokeStyle = grid; g.beginPath(); g.moveTo(px(k*2*Math.PI),T); g.lineTo(px(k*2*Math.PI),T+ph); g.stroke();
+    g.fillStyle = mut; g.textAlign='center'; g.fillText(fmt(k*K.T,'s'), px(k*2*Math.PI), h-8);
+  }
+  g.strokeStyle = grid; g.beginPath(); g.moveTo(L,y0); g.lineTo(L+pw,y0); g.stroke();
+  g.textAlign='right'; g.fillStyle = cV; g.fillText(fmt(K.vAx,'V'), L-6, T+10); g.fillText('−'+fmt(K.vAx,'V'), L-6, T+ph);
+  g.textAlign='left'; g.fillStyle = cI; g.fillText(fmt(K.iAx,'A'), L+pw+6, T+10); g.fillText('−'+fmt(K.iAx,'A'), L+pw+6, T+ph);
+  const show = $('chk').checked, P = Math.PI/2;
+  const fs = [
+    [x => S.V*Math.sin(x+K.phi)/K.vAx, cV, true],
+    [x => K.I*Math.sin(x)/K.iAx, cI, true],
+    [x => K.VL*Math.sin(x+P)/K.vAx, cL, show],
+    [x => K.VC*Math.sin(x-P)/K.vAx, cC, show]
+  ];
+  const xm = 2*Math.PI + ((S.th % (2*Math.PI)) + 2*Math.PI) % (2*Math.PI);
+  fs.forEach(([f,col,on],k)=>{
+    if(!on) return;
+    g.strokeStyle = col; g.lineWidth = k<2 ? 2.5 : 1.6; g.setLineDash(k<2?[]:[6,3]); g.beginPath();
+    for(let n=0;n<=500;n++){ const x = n/500*X, y = y0 - Math.max(-1.05,Math.min(1.05,f(x)))*ph/2; n?g.lineTo(px(x),y):g.moveTo(px(x),y); }
+    g.stroke(); g.setLineDash([]);
+    g.fillStyle = col; g.beginPath(); g.arc(px(xm), y0 - f(xm)*ph/2, 5, 0, 7); g.fill();
+  });
+  g.strokeStyle = mut; g.setLineDash([3,4]); g.lineWidth = 1;
+  g.beginPath(); g.moveTo(px(xm),T); g.lineTo(px(xm),T+ph); g.stroke(); g.setLineDash([]);
+}
+
+function drawResp(){
+  const {g,w,h} = cv.cz, grid = css('--grid'), mut = css('--mut'), cV = css('--v'), cI = css('--i');
+  g.clearRect(0,0,w,h);
+  const L = 50, Rm = 56, T = 14, B = 28, pw = w-L-Rm, ph = h-T-B;
+  const X = f => L + Math.log10(f/10)/4*pw, Yi = a => T + (1.1-a)/1.1*ph, Yp = p => T + (Math.PI/2-p)/Math.PI*ph;
+  g.font = FONT; g.lineWidth = 1; g.fillStyle = mut;
+  for(let d=1; d<=5; d++){ g.strokeStyle = grid; g.beginPath(); g.moveTo(X(10**d),T); g.lineTo(X(10**d),T+ph); g.stroke();
+    g.textAlign='center'; g.fillText(fmt(10**d,'Hz'), X(10**d), h-8); }
+  [0,0.5,1].forEach(a=>{ g.strokeStyle = grid; g.beginPath(); g.moveTo(L,Yi(a)); g.lineTo(L+pw,Yi(a)); g.stroke();
+    g.textAlign='right'; g.fillText(a, L-6, Yi(a)+4); });
+  g.textAlign='left'; [[Math.PI/2,'+90°'],[0,'0°'],[-Math.PI/2,'−90°']].forEach(([p,t])=>g.fillText(t, L+pw+6, Yp(p)+4));
+  // bande passante à -3 dB
+  const q2 = 1/(2*K.Q), f1 = K.f0*(Math.sqrt(1+q2*q2)-q2), f2 = K.f0*(Math.sqrt(1+q2*q2)+q2);
+  const cl = f => Math.min(Math.max(f,10),1e5);
+  g.globalAlpha = 0.13; g.fillStyle = cI; g.fillRect(X(cl(f1)), T, X(cl(f2))-X(cl(f1)), ph); g.globalAlpha = 1;
+  g.strokeStyle = cI; g.setLineDash([2,3]); g.beginPath(); g.moveTo(L,Yi(0.707)); g.lineTo(L+pw,Yi(0.707)); g.stroke();
+  g.fillStyle = mut; g.textAlign='left'; g.fillText('−3 dB (0,707)', L+6, Yi(0.707)-4);
+  g.strokeStyle = mut; g.beginPath(); g.moveTo(X(cl(K.f0)),T); g.lineTo(X(cl(K.f0)),T+ph); g.stroke(); g.setLineDash([]);
+  g.fillText('f₀', X(cl(K.f0))+4, T+12);
+  // courbes
+  const N = 400;
+  g.strokeStyle = cI; g.lineWidth = 2.5; g.beginPath();
+  for(let n=0;n<=N;n++){ const f = 10*10**(n/N*4), a = S.R/zOf(f).Z; n?g.lineTo(X(f),Yi(a)):g.moveTo(X(f),Yi(a)); }
+  g.stroke();
+  g.strokeStyle = cV; g.lineWidth = 2; g.setLineDash([6,4]); g.beginPath();
+  for(let n=0;n<=N;n++){ const f = 10*10**(n/N*4), p = zOf(f).phi; n?g.lineTo(X(f),Yp(p)):g.moveTo(X(f),Yp(p)); }
+  g.stroke(); g.setLineDash([]);
+  const mx = X(S.f);
+  g.strokeStyle = mut; g.lineWidth = 1; g.beginPath(); g.moveTo(mx,T); g.lineTo(mx,T+ph); g.stroke();
+  g.fillStyle = cI; g.beginPath(); g.arc(mx,Yi(S.R/K.Z),6,0,7); g.fill();
+  g.fillStyle = cV; g.beginPath(); g.arc(mx,Yp(K.phi),6,0,7); g.fill();
+}
+
+/* ---------- Boucle et interface ---------- */
+let last = performance.now();
+function loop(t){
+  const dt = Math.min((t-last)/1000, 0.1); last = t;
+  if(S.play) S.th += S.speed*2*Math.PI*dt;
+  drawPhasors(); drawWaves(); drawResp();
+  requestAnimationFrame(loop);
+}
+['f','R','L','C'].forEach(k => {
+  const s = $('s_'+k); S[k] = logVal(k, +s.value);
+  s.oninput = () => { S[k] = logVal(k, +s.value); calc(); };
+});
+$('s_V').oninput = e => { S.V = +e.target.value; calc(); };
+$('s_sp').oninput = e => S.speed = +e.target.value;
+$('play').onclick = e => { S.play = !S.play; e.target.textContent = S.play ? 'Pause' : 'Lecture'; };
+$('go0').onclick = () => {
+  calc(); const f0 = Math.min(Math.max(K.f0,10),1e5);
+  $('s_f').value = logPos('f', f0); S.f = f0; calc();
+};
+S.V = +$('s_V').value; S.speed = +$('s_sp').value;
+calc(); fitAll(); requestAnimationFrame(loop);
+</script>
+</body>
+</html>
